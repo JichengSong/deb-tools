@@ -1,0 +1,77 @@
+#/bin/bash -
+
+
+LOGIN_USER="root"
+IS_RETRIED="false"
+MAX_RETRIES=0
+
+
+while getopts :u:r: opt
+do
+    # Check option letter
+    case $opt in
+
+    u)   LOGIN_USER=$OPTARG
+         ;;
+
+    r)   IS_RETRIED="true"
+         MAX_RETRIES=$OPTARG
+         if [[ ! $MAX_RETRIES =~ "^[+]?[[:digit:]]+$" ]]
+         then
+             echo "$0: invalid MAX_RETRIES option argument: should be a nonnegative integer" >&2
+             exit 1
+         else
+             MAX_RETRIES=$(awk "BEGIN{print ($OPTARG + 0)}")
+         fi
+         ;;
+
+    '?') echo "$0: invalid option -$OPTARG" >&2
+         echo "Usage: $0 [-u user] <Machine_List> <Commond_List>" >&2
+         exit 1
+         ;;
+
+    esac
+done
+
+shift $((OPTIND - 1)) 
+
+
+#############################
+
+if [ $# -ne 2 ]
+then
+    echo "$0: invalid command parameter number" >&2
+    echo "Usage: $0 [-u user] <Machine_List> <Commond_List>"
+    exit 1
+fi
+
+
+MACHINE_LIST=$1
+shift
+
+
+SSH_POLL_TIMEOUT=10
+SSH_SAFE_TIMEOUT=30
+
+
+for slave in $(cat $MACHINE_LIST)
+do
+    if [[ $slave =~ "^[[:space:]]*$" ]]
+    then
+        continue;
+
+    elif [[ $slave =~ "^#" ]]
+    then
+        continue;
+
+    else
+        safewrapper $SSH_SAFE_TIMEOUT /usr/bin/ssh  \
+            -o StrictHostKeyChecking=no               \
+            -o PasswordAuthentication=no              \
+            -o ConnectTimeout=$SSH_POLL_TIMEOUT       \
+            "$LOGIN_USER@$slave" "$*" 2>&1 | sed "s/\(.*\)/$slave:\t\1/" &
+    
+    fi
+done
+wait
+
